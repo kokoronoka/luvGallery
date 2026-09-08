@@ -13,6 +13,9 @@
     { id: 'love', name: 'Love', desc: 'Romantic rose tones, handwritten notes, a heart-linked thread.', colors: ['#BE185D', '#EC4899', '#DC2626'] },
     { id: 'family', name: 'Family Warm', desc: 'Cozy amber & cream, soft rounded type for family memories.', colors: ['#B45309', '#D97706', '#78716C'] },
     { id: 'friends', name: 'Friends Fun', desc: 'Playful orange & blue with bold rounded type.', colors: ['#F97316', '#FB923C', '#2563EB'] },
+    { id: 'pastel', name: 'Pastel Dream', desc: 'Whimsical lavender & bubblegum pink with bubbly rounded type.', colors: ['#8B5CF6', '#F9A8D4', '#34D399'] },
+    { id: 'vintage', name: 'Vintage Sepia', desc: 'Aged paper & warm sepia tones, like an old photo album.', colors: ['#8B5E34', '#C9A66B', '#A63A2C'] },
+    { id: 'midnight', name: 'Midnight Romance', desc: 'Deep plum and gold on a dark canvas, for a moodier feel.', colors: ['#E9C46A', '#F4A6B7', '#F472B6'] },
   ];
 
   const AVATARS = [
@@ -40,6 +43,10 @@
     lightboxIndex: 0,
     createdUrls: [],
     timelineViewMode: localStorage.getItem('luv_timeline_view') === 'coverflow' ? 'coverflow' : 'thread',
+    homeTemplate: (() => {
+      const saved = localStorage.getItem('luv_home_template');
+      return TEMPLATES.some((t) => t.id === saved) ? saved : 'love';
+    })(),
   };
 
   // ---------------- Utilities ----------------
@@ -64,8 +71,17 @@
   function initialsOf(name) {
     return (name || '?').trim().split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase() || '').join('');
   }
+  const CUSTOM_LABEL_PALETTE = ['#7C3AED', '#0891B2', '#CA8A04', '#DB2777', '#059669', '#EA580C', '#4F46E5', '#B91C1C'];
+  function hashString(s) {
+    let h = 0;
+    for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+    return Math.abs(h);
+  }
   function labelColor(label) {
-    return `var(--tag-${label === 'partner' ? 'partner' : label === 'family' ? 'family' : 'friend'})`;
+    if (label === 'partner') return 'var(--tag-partner)';
+    if (label === 'family') return 'var(--tag-family)';
+    if (label === 'friend') return 'var(--tag-friend)';
+    return CUSTOM_LABEL_PALETTE[hashString(label || '') % CUSTOM_LABEL_PALETTE.length];
   }
   function avatarHtml(name, avatarId, fallbackColor) {
     const a = AVATARS.find((x) => x.id === avatarId);
@@ -127,7 +143,8 @@
     if (route === 'hub') { state.activeTimelineId = null; state.activeTimeline = null; showRoute('hub'); return; }
     if (route === 'people') { showRoute('people'); return; }
     if (route === 'timeline') { showRoute('timeline'); return; }
-    if (route === 'templates' || route === 'export') {
+    if (route === 'templates') { showRoute(route); return; }
+    if (route === 'export') {
       if (!state.activeTimelineId) { showToast('Open a timeline first'); return; }
       showRoute(route);
     }
@@ -145,13 +162,18 @@
   }
 
   // ---------------- Routing ----------------
+  function templateForRoute(route) {
+    if (route === 'hub' || route === 'people') return state.homeTemplate;
+    if (route === 'templates' && !state.activeTimelineId) return state.homeTemplate;
+    return state.activeTimeline?.template || 'love';
+  }
+
   function showRoute(route) {
     state.route = route;
     $$('.view').forEach((v) => { v.hidden = v.id !== `view-${route}`; });
     updateNavActive();
     updateSubHeader();
-    if (['hub', 'people'].includes(route)) applyVisualTemplate('love');
-    else if (state.activeTimeline) applyVisualTemplate(state.activeTimeline.template || 'love');
+    applyVisualTemplate(templateForRoute(route));
 
     if (route !== 'timeline') teardownCoverflow();
     if (route === 'hub') renderHub();
@@ -174,6 +196,7 @@
       const chip = $('#subheader-label');
       chip.textContent = LABELS[tl.label]?.name || tl.label;
       chip.dataset.label = tl.label;
+      chip.style.borderColor = labelColor(tl.label);
     }
   }
   $('#subheader-back').addEventListener('click', () => {
@@ -303,7 +326,12 @@
             <label for="invite-label">Relationship</label>
             <select id="invite-label">
               ${Object.entries(LABELS).map(([k, v]) => `<option value="${k}">${v.name}</option>`).join('')}
+              <option value="__custom__">Custom…</option>
             </select>
+          </div>
+          <div class="field" id="invite-custom-field" hidden>
+            <label for="invite-custom-label">Name this relationship</label>
+            <input type="text" id="invite-custom-label" maxlength="24" placeholder="e.g. Bestie, Roommate, Mentor" />
           </div>
           <button type="submit" class="btn btn-primary btn-block">Send invite</button>
         </form>
@@ -341,10 +369,17 @@
         <div class="empty-state">${svgIcon('heart')}<h3>No pending requests</h3><p>Invite someone above, or check back later.</p></div>` : ''}
     `;
 
+    $('#invite-label').addEventListener('change', (e) => {
+      $('#invite-custom-field').hidden = e.target.value !== '__custom__';
+    });
     $('#form-invite').addEventListener('submit', async (e) => {
       e.preventDefault();
       const email = $('#invite-email').value;
-      const label = $('#invite-label').value;
+      let label = $('#invite-label').value;
+      if (label === '__custom__') {
+        label = $('#invite-custom-label').value.trim();
+        if (!label) { showToast('Give this relationship a name'); return; }
+      }
       const btn = e.target.querySelector('button[type="submit"]');
       btn.disabled = true;
       const { error } = await window.LuvCloud.sendInvitation(email, label);
@@ -475,7 +510,7 @@
       return null;
     }).filter(Boolean);
     const peopleHtml = people.length ? `<div class="moment-people" style="justify-content:center;">${people.map((p) => `
-        <span class="chip" data-label="${tl.label}"><span class="dot" style="background:${labelColor(tl.label)}"></span>${escapeHtml(p.name)}</span>`).join('')}</div>` : '';
+        <span class="chip" data-label="${tl.label}" style="border-color:${labelColor(tl.label)}"><span class="dot" style="background:${labelColor(tl.label)}"></span>${escapeHtml(p.name)}</span>`).join('')}</div>` : '';
 
     box.innerHTML = `
       <div class="coverflow-time">${formatTime(d)}<span class="weekday">${formatWeekday(d)} · ${formatDay(d)}</span></div>
@@ -510,7 +545,7 @@
       return null;
     }).filter(Boolean);
     const peopleHtml = people.length ? `<div class="moment-people">${people.map((p) => `
-        <span class="chip" data-label="${tl.label}"><span class="dot" style="background:${labelColor(tl.label)}"></span>${escapeHtml(p.name)}</span>`).join('')}</div>` : '';
+        <span class="chip" data-label="${tl.label}" style="border-color:${labelColor(tl.label)}"><span class="dot" style="background:${labelColor(tl.label)}"></span>${escapeHtml(p.name)}</span>`).join('')}</div>` : '';
 
     let addedByHtml = '';
     if (state.currentUser && tl && !tl.isLocal && entry.createdBy && entry.createdBy !== state.currentUser.id) {
@@ -618,10 +653,12 @@
       { id: state.currentUser.id, name: 'Me' },
       { id: tl.partnerId, name: tl.partnerName || 'Them' },
     ];
-    box.innerHTML = options.map((p) => `
-      <span class="chip selectable ${state.selectedPeople.has(p.id) ? 'selected' : ''}" data-label="${tl.label}" data-id="${p.id}">
+    box.innerHTML = options.map((p) => {
+      const isSelected = state.selectedPeople.has(p.id);
+      return `<span class="chip selectable ${isSelected ? 'selected' : ''}" data-label="${tl.label}" data-id="${p.id}" ${isSelected ? '' : `style="border-color:${labelColor(tl.label)}"`}>
         <span class="dot" style="background:${labelColor(tl.label)}"></span>${escapeHtml(p.name)}
-      </span>`).join('');
+      </span>`;
+    }).join('');
     $$('.chip', box).forEach((chip) => chip.addEventListener('click', () => {
       const id = chip.dataset.id;
       if (state.selectedPeople.has(id)) state.selectedPeople.delete(id); else state.selectedPeople.add(id);
@@ -705,9 +742,20 @@
   function closeModal() { $('#modal-root').innerHTML = ''; }
 
   // ---------------- Templates ----------------
+  function setHomeTemplate(id) {
+    state.homeTemplate = id;
+    localStorage.setItem('luv_home_template', id);
+    applyVisualTemplate(id);
+  }
+
   async function renderTemplates() {
-    if (!state.activeTimeline) { showRoute('hub'); return; }
-    const active = state.activeTimeline.template || 'love';
+    const editingHome = !state.activeTimelineId;
+    const active = editingHome ? state.homeTemplate : (state.activeTimeline?.template || 'love');
+    const context = $('#templates-context');
+    context.textContent = editingHome
+      ? 'This is the look for your Timelines hub and People tab — each timeline still has its own theme.'
+      : `Just for your timeline with ${state.activeTimeline?.partnerName || 'them'}.`;
+
     const grid = $('#template-grid');
     grid.innerHTML = TEMPLATES.map((t) => `
       <div class="card template-card ${t.id === active ? 'active' : ''}" data-id="${t.id}">
@@ -722,7 +770,8 @@
         </button>
       </div>`).join('');
     $$('[data-action="apply-template"]', grid).forEach((btn) => btn.addEventListener('click', async () => {
-      await setActiveTimelineTemplate(btn.dataset.id);
+      if (editingHome) setHomeTemplate(btn.dataset.id);
+      else await setActiveTimelineTemplate(btn.dataset.id);
       renderTemplates();
       showToast('Template applied');
     }));
@@ -898,7 +947,6 @@
       hideAuthScreen();
       state.activeTimelineId = null;
       state.activeTimeline = null;
-      applyVisualTemplate('love');
       showRoute('hub');
     } else if (window.LuvCloud?.isConfigured() && localStorage.getItem('luv_skip_auth') !== '1') {
       showAuthScreen('signin');
