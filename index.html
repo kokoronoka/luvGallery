@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en" data-template="love">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>LuvGallery</title>
+<meta name="description" content="A cozy timestamped photo timeline for the people you love." />
+<meta name="theme-color" content="#BE185D" />
+<link rel="manifest" href="manifest.webmanifest" />
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png" />
+<link rel="icon" type="image/png" sizes="16x16" href="icons/favicon-16.png" />
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+<link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+
+<div id="auth-screen" class="auth-screen" hidden>
+  <div class="auth-card">
+    <div class="brand" style="justify-content:center; margin-bottom:4px;">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 21s-6.7-4.3-9.3-8.2C1 10 1.6 6.4 4.6 4.9c2.4-1.2 5-.4 6.4 1.6l1 1.4 1-1.4c1.4-2 4-2.8 6.4-1.6 3 1.5 3.6 5.1 1.9 7.9C18.7 16.7 12 21 12 21z"/></svg>
+      <span>LuvGallery</span>
+    </div>
+    <p class="auth-tagline">Sign in to keep your memories synced across devices.</p>
+
+    <form id="form-auth">
+      <div class="field">
+        <label for="auth-email">Email</label>
+        <input type="text" id="auth-email" inputmode="email" autocomplete="email" required />
+      </div>
+      <div class="field">
+        <label for="auth-password">Password</label>
+        <div style="position:relative;">
+          <input type="password" id="auth-password" autocomplete="current-password" required minlength="6" style="padding-right:44px;" />
+          <button type="button" id="btn-toggle-password" class="icon-btn" aria-label="Show password" style="position:absolute; right:2px; top:2px; width:38px; height:38px; border:none; background:transparent;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>
+        </div>
+        <div class="hint">At least 6 characters.</div>
+      </div>
+      <p class="auth-error" id="auth-error" hidden></p>
+      <button type="submit" class="btn btn-primary btn-block" id="btn-auth-submit">Sign in</button>
+    </form>
+    <button type="button" class="subtle-link" id="btn-auth-toggle" style="display:block; margin:14px auto 0;">
+      Don't have an account? Sign up
+    </button>
+    <button type="button" class="subtle-link" id="btn-auth-skip" style="display:block; margin:6px auto 0; color:var(--color-muted-fg);">
+      Continue without an account
+    </button>
+  </div>
+</div>
+
+<div id="app">
+  <header class="app-header">
+    <div class="brand">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 21s-6.7-4.3-9.3-8.2C1 10 1.6 6.4 4.6 4.9c2.4-1.2 5-.4 6.4 1.6l1 1.4 1-1.4c1.4-2 4-2.8 6.4-1.6 3 1.5 3.6 5.1 1.9 7.9C18.7 16.7 12 21 12 21z"/></svg>
+      <span>LuvGallery</span>
+    </div>
+    <div class="header-actions">
+      <span id="sync-indicator" class="sync-indicator" hidden title="Syncing"></span>
+      <button class="icon-btn" id="btn-export-shortcut" aria-label="Export memories" title="Export">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3M8 7l4-4 4 4"/><path d="M4 15v4a2 2 0 002 2h12a2 2 0 002-2v-4"/></svg>
+      </button>
+      <button class="icon-btn" id="btn-account" aria-label="Account" title="Account">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <div class="timeline-subheader" id="timeline-subheader" hidden>
+    <button class="icon-btn" id="subheader-back" aria-label="Back to timelines">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+    </button>
+    <div class="subheader-info">
+      <span id="subheader-avatar"></span>
+      <span id="subheader-name"></span>
+      <span class="chip" id="subheader-label"></span>
+    </div>
+  </div>
+
+  <!-- ===================== TIMELINES HUB ===================== -->
+  <main class="view" id="view-hub" hidden>
+    <h1 class="section-title">Timelines</h1>
+    <div id="hub-content"></div>
+  </main>
+
+  <!-- ===================== TIMELINE (per-relationship feed) ===================== -->
+  <main class="view" id="view-timeline">
+    <div class="view-toggle" id="timeline-view-toggle" role="tablist" aria-label="Timeline layout">
+      <button type="button" class="view-toggle-btn" data-mode="thread" role="tab" aria-label="List view">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="14" y2="18"/></svg>
+      </button>
+      <button type="button" class="view-toggle-btn" data-mode="coverflow" role="tab" aria-label="Card view">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="7" width="13" height="13" rx="2"/><rect x="4" y="4" width="13" height="13" rx="2"/></svg>
+      </button>
+    </div>
+    <div id="timeline-content"></div>
+    <div id="timeline-coverflow" hidden>
+      <div id="coverflow-stage"></div>
+      <div id="coverflow-caption"></div>
+    </div>
+  </main>
+
+  <!-- ===================== ADD MOMENT ===================== -->
+  <main class="view" id="view-add" hidden>
+    <h1 class="section-title">Add a moment</h1>
+    <form id="form-add">
+      <div class="field">
+        <label>Photos</label>
+        <div class="uploader" id="uploader" tabindex="0" role="button" aria-label="Add photos">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="2"/><path d="M21 15l-5-5L5 21"/></svg>
+          <div>Tap to choose photos, or drag them here</div>
+          <input type="file" id="file-input" accept="image/*" multiple hidden />
+        </div>
+        <div class="upload-previews" id="upload-previews"></div>
+      </div>
+
+      <div class="field" style="display:flex; gap:12px;">
+        <div style="flex:1;">
+          <label for="input-date">Date</label>
+          <input type="date" id="input-date" required />
+        </div>
+        <div style="flex:1;">
+          <label for="input-time">Time</label>
+          <input type="time" id="input-time" required />
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="input-note">Note</label>
+        <textarea id="input-note" placeholder="What happened in this moment?"></textarea>
+      </div>
+
+      <div class="field" id="people-picker-field" hidden>
+        <label>Who's in this moment?</label>
+        <div class="people-picker" id="people-picker"></div>
+      </div>
+
+      <button type="submit" class="btn btn-primary btn-block">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-6.7-4.3-9.3-8.2C1 10 1.6 6.4 4.6 4.9c2.4-1.2 5-.4 6.4 1.6l1 1.4 1-1.4c1.4-2 4-2.8 6.4-1.6 3 1.5 3.6 5.1 1.9 7.9C18.7 16.7 12 21 12 21z"/></svg>
+        Save moment
+      </button>
+    </form>
+  </main>
+
+  <!-- ===================== PEOPLE (connections & invitations) ===================== -->
+  <main class="view" id="view-people" hidden>
+    <h1 class="section-title">People</h1>
+    <div id="people-content"></div>
+  </main>
+
+  <!-- ===================== TEMPLATES ===================== -->
+  <main class="view" id="view-templates" hidden>
+    <h1 class="section-title">Templates</h1>
+    <div class="template-grid" id="template-grid"></div>
+  </main>
+
+  <!-- ===================== EXPORT ===================== -->
+  <main class="view" id="view-export" hidden>
+    <h1 class="section-title">Export memories</h1>
+    <div class="export-controls">
+      <div class="field">
+        <label for="export-month">Month</label>
+        <select id="export-month"></select>
+      </div>
+    </div>
+    <p class="hint" id="export-summary" style="color:var(--color-muted-fg); font-size:14px;"></p>
+    <div class="export-actions">
+      <button class="btn btn-secondary" id="btn-export-png">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+        Export as PNG
+      </button>
+      <button class="btn btn-primary" id="btn-export-pdf">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>
+        Export as PDF
+      </button>
+    </div>
+  </main>
+
+  <nav class="bottom-nav" id="bottom-nav"></nav>
+</div>
+
+<div id="modal-root"></div>
+<div id="export-stage" aria-hidden="true"></div>
+
+<script src="vendor/html2canvas.min.js"></script>
+<script src="vendor/jspdf.umd.min.js"></script>
+<script src="vendor/supabase.min.js"></script>
+<script src="js/supabase-config.js"></script>
+<script src="js/db.js"></script>
+<script src="js/cloud.js"></script>
+<script src="js/coverflow.js"></script>
+<script src="js/app.js"></script>
+<script src="js/export.js"></script>
+</body>
+</html>
