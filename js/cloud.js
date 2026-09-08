@@ -377,6 +377,19 @@
   }
 
   // ---------------- Reconcile: timelines ----------------
+  async function ensureSoloTimeline() {
+    const user = await getValidUser();
+    if (!user) return;
+    const { data: existing } = await supabase.from('timelines')
+      .select('id').eq('user_a', user.id).is('user_b', null).limit(1);
+    if (existing && existing.length) return;
+    // A unique partial index on (user_a) where user_b is null guards against
+    // duplicates if this races with another tab/device doing the same thing.
+    await supabase.from('timelines').insert({
+      id: DB.uid(), user_a: user.id, user_b: null, label: 'solo', template: 'love',
+    });
+  }
+
   async function reconcileTimelines() {
     const user = await getValidUser();
     if (!user) return [];
@@ -384,20 +397,25 @@
       .or(`user_a.eq.${user.id},user_b.eq.${user.id}`);
     if (error || !data) return [];
 
-    const otherIds = Array.from(new Set(data.map((t) => (t.user_a === user.id ? t.user_b : t.user_a))));
+    const myProfile = await getMyProfile();
+    const otherIds = Array.from(new Set(
+      data.map((t) => (t.user_a === user.id ? t.user_b : t.user_a)).filter(Boolean)
+    ));
     const partners = await profilesById(otherIds);
 
     const mapped = data.map((t) => {
-      const partnerId = t.user_a === user.id ? t.user_b : t.user_a;
-      const p = partners[partnerId];
+      const isSolo = !t.user_b;
+      const partnerId = isSolo ? null : (t.user_a === user.id ? t.user_b : t.user_a);
+      const p = isSolo ? myProfile : (partnerId ? partners[partnerId] : null);
       return {
         id: t.id,
         partnerId,
-        partnerName: p?.display_name || p?.email?.split('@')[0] || 'Someone',
-        partnerEmail: p?.email || '',
+        partnerName: isSolo ? 'My Journal' : (p?.display_name || p?.email?.split('@')[0] || 'Someone'),
+        partnerEmail: isSolo ? (myProfile?.email || '') : (p?.email || ''),
         partnerAvatar: p?.avatar || null,
         label: t.label,
         template: t.template,
+        isSolo,
         createdAt: t.created_at,
         updatedAt: t.updated_at,
         isLocal: false,
@@ -459,6 +477,7 @@
     setSyncing(true);
     try {
       await flushPendingQueues();
+      await ensureSoloTimeline();
       await reconcileTimelines();
       await reconcileEntries();
       await listInvitationsLive();

@@ -48,19 +48,22 @@ drop table if exists people cascade;
 drop table if exists settings cascade;
 drop table if exists timelines cascade;
 
--- ============ Timelines (exactly 2 members) ============
+-- ============ Timelines (2 members, or 1 for a personal/solo timeline) ============
 create table timelines (
   id          text primary key,
   user_a      uuid references auth.users(id) on delete cascade not null,
-  user_b      uuid references auth.users(id) on delete cascade not null,
-  label       text not null default 'friend',   -- partner | family | friend
-  template    text not null default 'love',      -- love | family | friends
+  user_b      uuid references auth.users(id) on delete cascade,  -- null = solo/personal timeline
+  label       text not null default 'friend',   -- partner | family | friend | solo | custom text
+  template    text not null default 'love',      -- love | family | friends | pastel | vintage | midnight
   created_at  timestamptz default now(),
   updated_at  timestamptz default now(),
-  constraint timelines_distinct_members check (user_a <> user_b)
+  constraint timelines_distinct_members check (user_b is null or user_a <> user_b)
 );
+-- At most one shared timeline per pair, and at most one solo timeline per user.
 create unique index if not exists timelines_unique_pair
-  on timelines (least(user_a, user_b), greatest(user_a, user_b));
+  on timelines (least(user_a, user_b), greatest(user_a, user_b)) where user_b is not null;
+create unique index if not exists timelines_unique_solo
+  on timelines (user_a) where user_b is null;
 
 alter table timelines enable row level security;
 create policy "Members can view their timelines" on timelines for select

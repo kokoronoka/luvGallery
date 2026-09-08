@@ -8,6 +8,8 @@
     family: { name: 'Family' },
     friend: { name: 'Friend' },
   };
+  const INVITE_LABELS = LABELS; // relationship options offered when inviting someone
+  const SOLO_LABEL = { name: 'Personal' }; // not invitable — used only for your own journal timeline
 
   const TEMPLATES = [
     { id: 'love', name: 'Love', desc: 'Romantic rose tones, handwritten notes, a heart-linked thread.', colors: ['#BE185D', '#EC4899', '#DC2626'] },
@@ -82,6 +84,10 @@
     if (label === 'family') return 'var(--tag-family)';
     if (label === 'friend') return 'var(--tag-friend)';
     return CUSTOM_LABEL_PALETTE[hashString(label || '') % CUSTOM_LABEL_PALETTE.length];
+  }
+  function labelName(label) {
+    if (label === 'solo') return SOLO_LABEL.name;
+    return LABELS[label]?.name || label;
   }
   function avatarHtml(name, avatarId, fallbackColor) {
     const a = AVATARS.find((x) => x.id === avatarId);
@@ -194,7 +200,7 @@
       $('#subheader-avatar').innerHTML = avatarHtml(tl.partnerName, tl.partnerAvatar, labelColor(tl.label));
       $('#subheader-name').textContent = tl.partnerName || 'Someone';
       const chip = $('#subheader-label');
-      chip.textContent = LABELS[tl.label]?.name || tl.label;
+      chip.textContent = labelName(tl.label);
       chip.dataset.label = tl.label;
       chip.style.borderColor = labelColor(tl.label);
     }
@@ -233,6 +239,7 @@
   async function renderHub() {
     const all = await DB.listTimelines();
     const real = all.filter((t) => !t.isLocal);
+    real.sort((a, b) => (a.isSolo === b.isSolo) ? 0 : a.isSolo ? -1 : 1);
     const container = $('#hub-content');
     if (!real.length) {
       container.innerHTML = `
@@ -251,7 +258,7 @@
           ${avatarHtml(t.partnerName, t.partnerAvatar, labelColor(t.label))}
           <div class="timeline-card-info">
             <div class="timeline-card-name">${escapeHtml(t.partnerName || 'Someone')}</div>
-            <div class="timeline-card-label">${LABELS[t.label]?.name || t.label}</div>
+            <div class="timeline-card-label">${labelName(t.label)}</div>
           </div>
         </div>
         <button class="icon-btn" data-action="delete-timeline" data-id="${t.id}" aria-label="Delete timeline">${svgIcon('trash')}</button>
@@ -272,9 +279,12 @@
   }
 
   async function deleteTimelineFlow(timeline) {
+    const body = timeline.isSolo
+      ? "This removes every moment in your personal journal. This can't be undone."
+      : `This removes every moment shared with ${escapeHtml(timeline.partnerName || 'them')} for both of you. This can't be undone.`;
     openConfirmModal(
-      'Delete this timeline?',
-      `This removes every moment shared with ${escapeHtml(timeline.partnerName || 'them')} for both of you. This can't be undone.`,
+      timeline.isSolo ? 'Delete your journal?' : 'Delete this timeline?',
+      body,
       async () => {
         if (!navigator.onLine) { showToast('Go online to delete a shared timeline'); return; }
         const { error } = (await window.LuvCloud?.deleteTimelineRemote?.(timeline.id)) || {};
@@ -438,7 +448,7 @@
     coverflowContainer.hidden = state.timelineViewMode !== 'coverflow';
 
     if (!state.entries.length) {
-      const who = state.activeTimeline?.isLocal ? 'your journal' : `you and ${escapeHtml(state.activeTimeline?.partnerName || 'them')}`;
+      const who = (state.activeTimeline?.isLocal || state.activeTimeline?.isSolo) ? 'your journal' : `you and ${escapeHtml(state.activeTimeline?.partnerName || 'them')}`;
       const emptyHtml = `
         <div class="empty-state">
           ${svgIcon('heart')}
@@ -504,7 +514,7 @@
     const d = new Date(entry.dateTime);
     const tl = state.activeTimeline;
     const people = (entry.peopleIds || []).map((pid) => {
-      if (!tl || tl.isLocal) return null;
+      if (!tl || tl.isLocal || tl.isSolo) return null;
       if (pid === state.currentUser?.id) return { name: 'You' };
       if (pid === tl.partnerId) return { name: tl.partnerName };
       return null;
@@ -539,7 +549,7 @@
 
     const tl = state.activeTimeline;
     const people = (entry.peopleIds || []).map((pid) => {
-      if (!tl || tl.isLocal) return null;
+      if (!tl || tl.isLocal || tl.isSolo) return null;
       if (pid === state.currentUser?.id) return { name: 'You' };
       if (pid === tl.partnerId) return { name: tl.partnerName };
       return null;
@@ -548,7 +558,7 @@
         <span class="chip" data-label="${tl.label}" style="border-color:${labelColor(tl.label)}"><span class="dot" style="background:${labelColor(tl.label)}"></span>${escapeHtml(p.name)}</span>`).join('')}</div>` : '';
 
     let addedByHtml = '';
-    if (state.currentUser && tl && !tl.isLocal && entry.createdBy && entry.createdBy !== state.currentUser.id) {
+    if (state.currentUser && tl && !tl.isLocal && !tl.isSolo && entry.createdBy && entry.createdBy !== state.currentUser.id) {
       addedByHtml = `<div class="moment-added-by">Added by ${escapeHtml(tl.partnerName || 'them')}</div>`;
     }
 
@@ -632,7 +642,7 @@
     state.pendingFiles.forEach((pf) => pf.url && URL.revokeObjectURL(pf.url));
     state.pendingFiles = [];
     const tl = state.activeTimeline;
-    state.selectedPeople = (tl && !tl.isLocal && state.currentUser)
+    state.selectedPeople = (tl && !tl.isLocal && !tl.isSolo && state.currentUser)
       ? new Set([state.currentUser.id, tl.partnerId])
       : new Set();
     renderUploadPreviews();
@@ -647,7 +657,7 @@
     const wrapper = $('#people-picker-field');
     const box = $('#people-picker');
     const tl = state.activeTimeline;
-    if (!tl || tl.isLocal || !state.currentUser) { wrapper.hidden = true; return; }
+    if (!tl || tl.isLocal || tl.isSolo || !state.currentUser) { wrapper.hidden = true; return; }
     wrapper.hidden = false;
     const options = [
       { id: state.currentUser.id, name: 'Me' },
